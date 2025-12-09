@@ -1,0 +1,8 @@
+{
+  "name": "智能体视频工作室",
+  "description": "移动优先的AI视频模板管理与生成追踪界面。",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
