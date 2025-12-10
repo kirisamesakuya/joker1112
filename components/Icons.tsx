@@ -1,3 +1,4 @@
+
 import { 
   Settings, 
   MoreHorizontal, 
@@ -7,6 +8,7 @@ import {
   Trash2, 
   Upload, 
   Play, 
+  Pause,
   Search,
   ChevronLeft,
   Filter,
@@ -29,7 +31,14 @@ import {
   Box,
   Mic,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  FileAudio,
+  Type,
+  Camera,
+  CheckCircle2,
+  Minus,
+  Disc,
+  Info
 } from 'lucide-react';
 
 export {
@@ -38,9 +47,10 @@ export {
   Plus,
   Check,
   X,
-  Trash2,
-  Upload,
-  Play,
+  Trash2, 
+  Upload, 
+  Play, 
+  Pause,
   Search,
   ChevronLeft,
   Filter,
@@ -63,5 +73,12 @@ export {
   Box,
   Mic,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  FileAudio,
+  Type,
+  Camera,
+  CheckCircle2,
+  Minus,
+  Disc,
+  Info
 };

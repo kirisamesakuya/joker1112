@@ -16,6 +16,11 @@ export enum PublishStatus {
   OFFLINE = '已下架'
 }
 
+export enum LipSyncMode {
+  ORIGINAL = 'ORIGINAL',
+  CUSTOM = 'CUSTOM'
+}
+
 export interface VideoTemplate {
   id: string;
   name: string;
@@ -28,6 +33,8 @@ export interface VideoTemplate {
   createdAt: number;
   // Feature flags
   supportLipSync?: boolean;
+  lipSyncMode?: LipSyncMode;
+  defaultScript?: string;
   // BOSS specific fields
   creator?: string;
   usageCount?: number;

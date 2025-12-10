@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './Button';
-import { X, Loader2, Play, Check, Mic, AlertCircle } from './Icons';
+import { X, Loader2, Play, Check, Mic, AlertCircle, FileAudio, Type, User } from './Icons';
 import { generateCreativeTemplateName } from '../services/geminiService';
-import { VideoTemplate, TemplateStatus } from '../types';
+import { VideoTemplate, TemplateStatus, LipSyncMode } from '../types';
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -19,15 +19,24 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, remainingQuota
   const [isUploading, setIsUploading] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [isLipSyncEnabled, setIsLipSyncEnabled] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
+  // Lip Sync State
+  const [isLipSyncEnabled, setIsLipSyncEnabled] = useState(false);
+  const [lipSyncMode, setLipSyncMode] = useState<LipSyncMode>(LipSyncMode.ORIGINAL);
+  const [customScript, setCustomScript] = useState('');
+  const [videoDuration, setVideoDuration] = useState(15); // Mock duration in seconds
+
   // Mock Video Reference (Image for this demo)
   const MOCK_VIDEO_IMG = "https://picsum.photos/seed/newupload/400/600";
   const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Derived Values
+  const maxScriptChars = videoDuration * 4;
+  const isScriptOverLimit = customScript.length > maxScriptChars;
 
   // Reset state when opening
   useEffect(() => {
@@ -36,8 +45,11 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, remainingQuota
       setTemplateName('');
       setSelectedTags([]);
       setIsLipSyncEnabled(false);
+      setLipSyncMode(LipSyncMode.ORIGINAL);
+      setCustomScript('');
       setPreviewUrl('');
       setErrorMessage(null);
+      setVideoDuration(15); // Reset mock duration
     }
   }, [isOpen]);
 
@@ -96,15 +108,21 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, remainingQuota
   };
 
   const handleFinish = () => {
+    if (isLipSyncEnabled && lipSyncMode === LipSyncMode.CUSTOM && (isScriptOverLimit || !customScript.trim())) {
+      return;
+    }
+
     const newTemplate: VideoTemplate = {
       id: Date.now().toString(),
       name: templateName,
       thumbnailUrl: previewUrl,
-      duration: "10s",
+      duration: `${videoDuration}s`,
       resolution: "1080P",
       status: TemplateStatus.ONLINE,
       tags: selectedTags.length > 0 ? selectedTags : ['通用'],
       supportLipSync: isLipSyncEnabled,
+      lipSyncMode: isLipSyncEnabled ? lipSyncMode : undefined,
+      defaultScript: isLipSyncEnabled && lipSyncMode === LipSyncMode.CUSTOM ? customScript : undefined,
       createdAt: Date.now()
     };
     onSave(newTemplate);
@@ -118,7 +136,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, remainingQuota
       <div className="bg-white w-full max-w-md h-[90vh] sm:h-[800px] sm:rounded-2xl rounded-t-2xl shadow-2xl flex flex-col overflow-hidden relative">
         
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
           <h2 className="font-semibold text-lg">
             {step === 'UPLOAD' && '上传视频'}
             {(step === 'CONFIG_NAME' || step === 'CONFIG_AREA') && '配置模板'}
@@ -206,35 +224,36 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, remainingQuota
             </div>
           )}
 
-          {/* STEP 3: CONFIG AREA */}
+          {/* STEP 3: CONFIG AREA & LIP SYNC (COMPACT LAYOUT) */}
           {step === 'CONFIG_AREA' && (
-            <div className="w-full space-y-6">
-               <div className="relative w-full aspect-[3/4] bg-gray-900 rounded-xl overflow-hidden">
+            <div className="w-full flex flex-col gap-4">
+               {/* Video Preview */}
+               <div className="relative w-full aspect-[3/4] bg-gray-900 rounded-xl overflow-hidden shadow-sm flex-shrink-0">
                  <img src={previewUrl} className="w-full h-full object-cover" alt="Preview" />
-                 
-                 {/* Simulated Selection Area UI */}
                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="w-[60%] h-[40%] border-2 border-blue-500 bg-blue-500/10 rounded-lg relative animate-pulse">
-                      <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full">
-                        AI替换区域
+                      <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap shadow-sm">
+                        AI替换区域 (点击视频调整)
                       </span>
                     </div>
                  </div>
                </div>
 
-               <div className="space-y-4">
-                 <div className="space-y-2">
-                   <p className="text-sm text-gray-900 font-medium">选择替换主体</p>
-                   <p className="text-xs text-gray-500">点击选择视频中需要替换的区域，蓝色高亮表示已选中</p>
-                   <div className="flex gap-2 justify-center mt-2">
+               {/* Settings Container */}
+               <div className="bg-gray-50 border border-gray-100 rounded-xl p-3 space-y-3">
+                 
+                 {/* Subject Selection (Compact Row) */}
+                 <div className="flex items-center justify-between">
+                   <span className="text-xs font-medium text-gray-700">替换主体:</span>
+                   <div className="flex gap-2">
                       {['人物', '背景', '物体'].map(tag => (
                         <button
                           key={tag}
                           onClick={() => handleTagToggle(tag)}
-                          className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
                             selectedTags.includes(tag) 
-                              ? 'bg-blue-600 text-white shadow-md scale-105' 
-                              : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+                              ? 'bg-blue-600 text-white shadow-sm' 
+                              : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-100'
                           }`}
                         >
                           {tag}
@@ -243,46 +262,90 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, remainingQuota
                    </div>
                  </div>
 
-                 {/* Lip Sync Module */}
-                 <div className="pt-2 border-t border-gray-100">
-                    <div 
-                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                        isLipSyncEnabled 
-                          ? 'bg-purple-50 border-purple-200' 
-                          : 'bg-gray-50 border-gray-100'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                           isLipSyncEnabled ? 'bg-purple-100 text-purple-600' : 'bg-gray-200 text-gray-500'
-                        }`}>
-                          <Mic size={16} />
-                        </div>
-                        <div className="text-left">
-                          <div className="text-sm font-medium text-gray-900">对口型</div>
-                          <div className="text-[10px] text-gray-500">开启后支持AI精准口型同步</div>
-                          {isLipSyncEnabled && (
-                            <div className="text-[10px] text-orange-500 font-medium mt-1 animate-in fade-in slide-in-from-top-1">
-                              ⚠️ 开启将额外消耗算力
-                            </div>
-                          )}
-                        </div>
+                 <div className="h-px bg-gray-200"></div>
+
+                 {/* Lip Sync Module (Compact) */}
+                 <div className="space-y-3">
+                    {/* Header Toggle */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Mic size={14} className={isLipSyncEnabled ? "text-purple-600" : "text-gray-400"} />
+                        <span className="text-xs font-medium text-gray-700">对口型增强</span>
                       </div>
                       
-                      {/* Toggle Switch */}
                       <button
                         onClick={() => setIsLipSyncEnabled(!isLipSyncEnabled)}
-                        className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors duration-200 ease-in-out ${
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
                           isLipSyncEnabled ? 'bg-purple-600' : 'bg-gray-300'
                         }`}
                       >
-                        <div
-                          className={`bg-white w-4 h-4 rounded-full shadow-md transform duration-200 ease-in-out ${
-                            isLipSyncEnabled ? 'translate-x-5' : 'translate-x-0'
-                          }`}
-                        />
+                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition ${
+                          isLipSyncEnabled ? 'translate-x-4.5' : 'translate-x-1'
+                        }`} />
                       </button>
                     </div>
+
+                    {/* Expanded Settings */}
+                    {isLipSyncEnabled && (
+                      <div className="space-y-3 animate-in slide-in-from-top-1">
+                         {/* Segmented Control for Mode */}
+                         <div className="bg-gray-200/50 p-1 rounded-lg flex text-xs font-medium">
+                           <button 
+                              onClick={() => setLipSyncMode(LipSyncMode.ORIGINAL)}
+                              className={`flex-1 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-all ${
+                                lipSyncMode === LipSyncMode.ORIGINAL 
+                                  ? 'bg-white text-purple-700 shadow-sm' 
+                                  : 'text-gray-500 hover:text-gray-700'
+                              }`}
+                            >
+                              <FileAudio size={12} /> 保留原声
+                            </button>
+                            <button 
+                              onClick={() => setLipSyncMode(LipSyncMode.CUSTOM)}
+                              className={`flex-1 py-1.5 rounded-md flex items-center justify-center gap-1.5 transition-all ${
+                                lipSyncMode === LipSyncMode.CUSTOM 
+                                  ? 'bg-white text-purple-700 shadow-sm' 
+                                  : 'text-gray-500 hover:text-gray-700'
+                              }`}
+                            >
+                              <User size={12} /> 用户配音
+                            </button>
+                         </div>
+                         
+                         {/* Description Text */}
+                         <p className="text-[10px] text-gray-500 px-1">
+                           {lipSyncMode === LipSyncMode.ORIGINAL 
+                             ? "用户无需录音，视频保留模板原声，口型自动同步。" 
+                             : "用户需根据提示文案录制声音，视频口型匹配用户语音。"}
+                         </p>
+
+                         {/* Custom Script Input */}
+                         {lipSyncMode === LipSyncMode.CUSTOM && (
+                            <div className="space-y-1.5">
+                               <div className="flex justify-between items-center text-[10px]">
+                                  <span className="text-purple-700 font-medium">配置提词器文案</span>
+                                  <span className={isScriptOverLimit ? 'text-red-500' : 'text-gray-400'}>
+                                     {customScript.length}/{maxScriptChars} 字
+                                  </span>
+                               </div>
+                               <textarea 
+                                  value={customScript}
+                                  onChange={(e) => setCustomScript(e.target.value)}
+                                  placeholder="输入文案供用户朗读..."
+                                  className={`w-full text-xs p-2 rounded-lg border outline-none min-h-[60px] resize-none ${
+                                    isScriptOverLimit ? 'border-red-300 bg-red-50' : 'border-gray-200 focus:border-purple-400'
+                                  }`}
+                                />
+                            </div>
+                         )}
+
+                         {/* Warning */}
+                         <div className="flex items-center gap-1.5 text-[10px] text-orange-600 bg-orange-50 px-2 py-1.5 rounded-md border border-orange-100">
+                            <AlertCircle size={10} className="shrink-0" />
+                            <span>生成时间将比普通视频稍长。</span>
+                         </div>
+                      </div>
+                    )}
                  </div>
                </div>
             </div>
@@ -291,14 +354,18 @@ export const UploadModal: React.FC<UploadModalProps> = ({ isOpen, remainingQuota
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 border-t bg-gray-50 safe-area-bottom">
+        <div className="p-4 border-t bg-gray-50 flex-shrink-0 safe-area-bottom">
           {step === 'CONFIG_NAME' && (
             <Button fullWidth onClick={handleConfigNameComplete} disabled={!templateName}>
               下一步
             </Button>
           )}
           {step === 'CONFIG_AREA' && (
-            <Button fullWidth onClick={handleFinish}>
+            <Button 
+              fullWidth 
+              onClick={handleFinish}
+              disabled={isLipSyncEnabled && lipSyncMode === LipSyncMode.CUSTOM && (isScriptOverLimit || !customScript.trim())}
+            >
               完成配置
             </Button>
           )}

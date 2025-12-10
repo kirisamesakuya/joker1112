@@ -1,7 +1,9 @@
+
 import React, { useState } from 'react';
 import { VideoTemplate, TemplateStatus } from '../../types';
 import { Search, RefreshCw, Trash2, Check, X, Play } from '../Icons';
 import { Button } from '../Button';
+import { ConfirmDialog } from '../ConfirmDialog';
 
 interface BossTemplateManagerProps {
   templates: VideoTemplate[];
@@ -16,6 +18,15 @@ export const BossTemplateManager: React.FC<BossTemplateManagerProps> = ({
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Confirmation State
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'info' | 'danger';
+    action: () => void;
+  }>({ isOpen: false, title: '', message: '', type: 'info', action: () => {} });
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -34,8 +45,53 @@ export const BossTemplateManager: React.FC<BossTemplateManagerProps> = ({
 
   const filteredTemplates = templates.filter(t => t.name.includes(searchQuery) || t.id.includes(searchQuery));
 
+  // Helper to trigger confirmation
+  const handleConfirmAction = (
+    title: string, 
+    message: string, 
+    type: 'info' | 'danger',
+    action: () => void
+  ) => {
+    setConfirmConfig({
+      isOpen: true,
+      title,
+      message,
+      type,
+      action: () => {
+        action();
+        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+
+  const requestUpdateStatus = (ids: string[], status: TemplateStatus) => {
+    const actionName = status === TemplateStatus.ONLINE ? '上架' : '下架';
+    handleConfirmAction(
+      `确认${actionName}`,
+      `确定要将选中的 ${ids.length} 个模板${actionName}吗？${status === TemplateStatus.OFFLINE ? ' 下架后用户将不可见。' : ''}`,
+      'info',
+      () => {
+        onUpdateStatus(ids, status);
+        // Clear selection if it was a bulk action
+        if (ids.length > 1) setSelectedIds(new Set());
+      }
+    );
+  };
+
+  const requestDelete = (ids: string[]) => {
+    handleConfirmAction(
+      '确认删除',
+      `删除后将无法恢复，确定要删除选中的 ${ids.length} 个模板吗？`,
+      'danger',
+      () => {
+        onDelete(ids);
+        if (ids.length > 1) setSelectedIds(new Set());
+      }
+    );
+  };
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden relative">
       {/* Search Bar */}
       <div className="p-5 border-b border-gray-100 space-y-4">
         <div className="flex flex-wrap gap-4">
@@ -79,14 +135,14 @@ export const BossTemplateManager: React.FC<BossTemplateManagerProps> = ({
            )}
         </div>
         <div className="flex gap-2">
-           <Button size="sm" variant="outline" disabled={selectedIds.size === 0} onClick={() => onUpdateStatus(Array.from(selectedIds), TemplateStatus.ONLINE)}>批量上架</Button>
-           <Button size="sm" variant="outline" disabled={selectedIds.size === 0} onClick={() => onUpdateStatus(Array.from(selectedIds), TemplateStatus.OFFLINE)}>批量下架</Button>
-           <Button size="sm" variant="danger" disabled={selectedIds.size === 0} onClick={() => onDelete(Array.from(selectedIds))}>批量删除</Button>
+           <Button size="sm" variant="outline" disabled={selectedIds.size === 0} onClick={() => requestUpdateStatus(Array.from(selectedIds), TemplateStatus.ONLINE)}>批量上架</Button>
+           <Button size="sm" variant="outline" disabled={selectedIds.size === 0} onClick={() => requestUpdateStatus(Array.from(selectedIds), TemplateStatus.OFFLINE)}>批量下架</Button>
+           <Button size="sm" variant="danger" disabled={selectedIds.size === 0} onClick={() => requestDelete(Array.from(selectedIds))}>批量删除</Button>
         </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto min-h-[400px]">
         <table className="w-full text-left">
           <thead className="bg-gray-50 text-gray-500 font-medium border-b">
             <tr>
@@ -141,12 +197,12 @@ export const BossTemplateManager: React.FC<BossTemplateManagerProps> = ({
                 <td className="p-4 text-right">
                   <div className="flex items-center justify-end gap-3 text-sm">
                      {t.status === TemplateStatus.ONLINE ? (
-                        <button onClick={() => onUpdateStatus([t.id], TemplateStatus.OFFLINE)} className="text-gray-500 hover:text-red-600">下架</button>
+                        <button onClick={() => requestUpdateStatus([t.id], TemplateStatus.OFFLINE)} className="text-gray-500 hover:text-red-600">下架</button>
                      ) : (
-                        <button onClick={() => onUpdateStatus([t.id], TemplateStatus.ONLINE)} className="text-blue-600 hover:text-blue-800">上架</button>
+                        <button onClick={() => requestUpdateStatus([t.id], TemplateStatus.ONLINE)} className="text-blue-600 hover:text-blue-800">上架</button>
                      )}
                      <button className="text-gray-500 hover:text-blue-600">推荐</button>
-                     <button onClick={() => onDelete([t.id])} className="text-red-500 hover:text-red-700">删除</button>
+                     <button onClick={() => requestDelete([t.id])} className="text-red-500 hover:text-red-700">删除</button>
                   </div>
                 </td>
               </tr>
@@ -165,6 +221,15 @@ export const BossTemplateManager: React.FC<BossTemplateManagerProps> = ({
             <button className="w-8 h-8 border rounded hover:bg-gray-50">&gt;</button>
          </div>
       </div>
+
+      <ConfirmDialog 
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+        onConfirm={confirmConfig.action}
+        onCancel={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

@@ -1,20 +1,24 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Settings, 
   MoreHorizontal, 
   Upload, 
   Trash2, 
-  ChevronLeft,
-  Check,
-  X,
-  Loader2,
-  Play,
-  ArrowUp,
-  ArrowDown,
-  AlertCircle,
-  Box,
-  LayoutGrid
+  ChevronLeft, 
+  Check, 
+  X, 
+  Loader2, 
+  Play, 
+  ArrowUp, 
+  ArrowDown, 
+  AlertCircle, 
+  Box, 
+  LayoutGrid,
+  Disc, 
+  Minus, 
+  Plus, 
+  Info,
+  Download
 } from './components/Icons';
 import { Button } from './components/Button';
 import { TemplateCard } from './components/TemplateCard';
@@ -34,9 +38,10 @@ import {
   VideoTemplate, 
   TemplateStatus, 
   GenerationRecord, 
-  GenerationStatus,
-  PublishStatus,
-  BossTab
+  GenerationStatus, 
+  PublishStatus, 
+  BossTab, 
+  LipSyncMode 
 } from './types';
 
 // --- CONSTANTS & UTILS ---
@@ -53,20 +58,65 @@ const formatBytes = (bytes: number, decimals = 1) => {
 };
 
 // --- MOCK DATA ---
-const MOCK_TEMPLATES: VideoTemplate[] = Array.from({ length: 8 }).map((_, i) => ({
-  id: `tpl-${1000 + i}`,
-  name: i % 2 === 0 ? "圣诞主题视频" : "元旦烟花特效",
-  thumbnailUrl: `https://picsum.photos/seed/${i + 12}/300/400`,
-  duration: "12s",
-  resolution: "1080P",
-  size: Math.floor(Math.random() * 20 * 1024 * 1024) + 5 * 1024 * 1024, // Random size between 5MB and 25MB
-  status: i === 0 ? TemplateStatus.OFFLINE : TemplateStatus.ONLINE,
-  tags: i % 3 === 0 ? ['人物', '背景'] : ['人物'],
-  createdAt: Date.now() - i * 1000000,
-  // Boss Mock Fields
-  creator: i % 2 === 0 ? "Admin" : "Creator_001",
-  usageCount: Math.floor(Math.random() * 50000),
-}));
+const MOCK_TEMPLATES: VideoTemplate[] = [
+  {
+    id: `tpl-1001`,
+    name: "圣诞主题视频",
+    thumbnailUrl: `https://picsum.photos/seed/1001/300/400`,
+    duration: "5s",
+    resolution: "720P",
+    size: 15 * 1024 * 1024,
+    status: TemplateStatus.ONLINE,
+    tags: ['人物', '节日'],
+    createdAt: Date.now(),
+    supportLipSync: false, // Type 1: Face Swap Only
+    creator: "Admin",
+    usageCount: 1204
+  },
+  {
+    id: `tpl-1002`,
+    name: "元旦烟花特效",
+    thumbnailUrl: `https://picsum.photos/seed/1002/300/400`,
+    duration: "5s",
+    resolution: "720P",
+    size: 10 * 1024 * 1024,
+    status: TemplateStatus.ONLINE,
+    tags: ['背景'],
+    createdAt: Date.now() - 100000,
+    supportLipSync: true, 
+    lipSyncMode: LipSyncMode.ORIGINAL, // Type 2: Face Swap + Original Audio Lip Sync
+    creator: "Admin",
+    usageCount: 850
+  },
+  {
+    id: `tpl-1003`,
+    name: "新春祝福(自定义)",
+    thumbnailUrl: `https://picsum.photos/seed/1003/300/400`,
+    duration: "5s",
+    resolution: "720P",
+    size: 18 * 1024 * 1024,
+    status: TemplateStatus.ONLINE,
+    tags: ['人物', '祝福'],
+    createdAt: Date.now() - 200000,
+    supportLipSync: true,
+    lipSyncMode: LipSyncMode.CUSTOM, // Type 3: Face Swap + Custom Script
+    creator: "Creator_001",
+    usageCount: 3200
+  },
+  ...Array.from({ length: 5 }).map((_, i) => ({
+    id: `tpl-${1004 + i}`,
+    name: `通用模板 ${i+1}`,
+    thumbnailUrl: `https://picsum.photos/seed/${i + 20}/300/400`,
+    duration: "5s",
+    resolution: "720P",
+    size: 8 * 1024 * 1024,
+    status: i === 0 ? TemplateStatus.OFFLINE : TemplateStatus.ONLINE,
+    tags: ['通用'],
+    createdAt: Date.now() - (i + 5) * 100000,
+    creator: "Admin",
+    usageCount: Math.floor(Math.random() * 1000)
+  }))
+];
 
 const MOCK_GENERATIONS: GenerationRecord[] = Array.from({ length: 15 }).map((_, i) => ({
   id: `gen-${i}`,
@@ -76,7 +126,7 @@ const MOCK_GENERATIONS: GenerationRecord[] = Array.from({ length: 15 }).map((_, 
   thumbnailUrl: `https://picsum.photos/seed/${i + 55}/200/200`,
   status: i === 0 ? GenerationStatus.PROCESSING : i === 1 ? GenerationStatus.FAILED : GenerationStatus.COMPLETED,
   publishStatus: i % 3 === 0 ? PublishStatus.OFFLINE : PublishStatus.ONLINE, // Mock publish status
-  timestamp: `2024-10-2${i % 9} 14:30`,
+  timestamp: `2024-12-2${i % 9} 13:00`,
   // Boss Mock Fields
   videoNo: `V2024110500${i}`,
   userMobile: `138000000${i}`,
@@ -99,10 +149,12 @@ const App: React.FC = () => {
   // --- ADMIN STATE (B-Side) ---
   const [activeAdminTab, setActiveAdminTab] = useState<'templates' | 'generations'>('templates');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [dailyLimit, setDailyLimit] = useState(2); // New: Limit Count Setting
   
   // Template Management
   const [isManageMode, setIsManageMode] = useState(false);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<string>>(new Set());
+  const [previewTemplate, setPreviewTemplate] = useState<VideoTemplate | null>(null);
   
   // Generation Management
   const [isGenManageMode, setIsGenManageMode] = useState(false);
@@ -129,7 +181,7 @@ const App: React.FC = () => {
   const [selectedConsumerImage, setSelectedConsumerImage] = useState<string>('');
   const [selectedResult, setSelectedResult] = useState<GenerationRecord | null>(null);
   const [usageCount, setUsageCount] = useState(9); // Mock starting at 9/10
-  const MAX_USAGE = 10;
+  const MAX_USAGE = 10; // This could be linked to dailyLimit
   
   // Toast Notification State
   const [toast, setToast] = useState<{message: string, type: 'info' | 'success', onClick?: () => void} | null>(null);
@@ -252,6 +304,11 @@ const App: React.FC = () => {
     });
   };
 
+  const handleDownload = (url: string, filename: string) => {
+    setToast({ message: `开始下载: ${filename}`, type: 'success' });
+    console.log(`Simulating download of ${filename} from ${url}`);
+  };
+
   // --- TEMPLATE BULK ACTIONS ---
   const handleBulkStatus = (status: TemplateStatus) => {
     const targetIds = Array.from(selectedTemplateIds).filter(id => {
@@ -330,15 +387,30 @@ const App: React.FC = () => {
       'danger'
     );
   };
+  
+  const handleBulkGenDownload = () => {
+    const selectedCount = selectedGenIds.size;
+    if (selectedCount === 0) return;
+
+    setToast({ message: `开始批量下载 ${selectedCount} 个视频`, type: 'success' });
+    console.log('Downloading generations:', Array.from(selectedGenIds));
+  };
 
 
   const handleBossDeleteTemplates = (ids: string[]) => {
-    if (window.confirm(`BOSS操作：确定要删除 ${ids.length} 个模板吗?`)) {
-      setTemplates(templates.filter(t => !ids.includes(t.id)));
-    }
+    // Direct Update: Confirmation is handled by the UI Component (BossTemplateManager)
+    setTemplates(prev => prev.filter(t => !ids.includes(t.id)));
   };
   const handleBossUpdateStatus = (ids: string[], status: TemplateStatus) => {
-    setTemplates(templates.map(t => ids.includes(t.id) ? { ...t, status } : t));
+    // Direct Update: Confirmation is handled by the UI Component
+    setTemplates(prev => prev.map(t => ids.includes(t.id) ? { ...t, status } : t));
+  };
+  
+  const handleBossDeleteGenerations = (ids: string[]) => {
+     setGenerations(prev => prev.filter(g => !ids.includes(g.id)));
+  };
+  const handleBossUpdateGenerationStatus = (ids: string[], status: PublishStatus) => {
+     setGenerations(prev => prev.map(g => ids.includes(g.id) ? { ...g, publishStatus: status } : g));
   };
 
   // --- CONSUMER HANDLERS ---
@@ -356,7 +428,7 @@ const App: React.FC = () => {
     setConsumerView('CROPPER');
   };
 
-  const handleStartGeneration = () => {
+  const handleStartGeneration = (script?: string) => {
     setConsumerView('FEED');
     const newRecord: GenerationRecord = {
       id: `gen-new-${Date.now()}`,
@@ -368,6 +440,12 @@ const App: React.FC = () => {
       publishStatus: PublishStatus.ONLINE,
       timestamp: new Date().toLocaleString()
     };
+    
+    // Log script usage if any
+    if (script) {
+        console.log("Generating with custom script:", script);
+    }
+
     setConsumerGenerations([newRecord, ...consumerGenerations]);
     setUsageCount(prev => prev + 1);
     setToast({
@@ -451,118 +529,150 @@ const App: React.FC = () => {
           />
         )}
         {activeBossTab === BossTab.GENERATION_MGMT && (
-          <BossGenerationManager generations={generations} />
+          <BossGenerationManager 
+             generations={generations} 
+             onDelete={handleBossDeleteGenerations}
+             onUpdateStatus={handleBossUpdateGenerationStatus}
+          />
         )}
       </BossLayout>
     );
   }
 
-  // Render Admin View (B-Side)
+  // Render Admin View (B-Side) - UPDATED TO NEW DESIGN
   if (appMode === 'ADMIN') {
+    const isAnyManageMode = isManageMode || isGenManageMode;
+    const activeSelectedCount = isManageMode ? selectionState.count : genSelectionState.count;
+
     return (
-      <div className="min-h-screen flex justify-center bg-gray-100">
-        <div className="w-full max-w-md bg-white min-h-screen shadow-2xl flex flex-col relative overflow-hidden">
-          <header className="px-4 py-3 bg-white border-b sticky top-0 z-10 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <button onClick={() => setAppMode('LANDING')} className="p-1 hover:bg-gray-100 rounded-full">
-                <ChevronLeft size={24} className="text-gray-700" />
+      <div className="min-h-screen flex justify-center bg-gray-50">
+        <div className="w-full max-w-md bg-[#f9fafb] min-h-screen shadow-2xl flex flex-col relative overflow-hidden">
+          
+          {/* Header - Dynamic based on Manage Mode */}
+          {!isAnyManageMode ? (
+            /* Normal Header */
+            <header className="px-4 py-3 bg-white sticky top-0 z-10 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <button onClick={() => setAppMode('LANDING')} className="p-1 hover:bg-gray-100 rounded-full">
+                  <ChevronLeft size={24} className="text-gray-900" />
+                </button>
+                <h1 className="text-lg font-bold text-gray-900">智能体设置</h1>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="p-2 hover:bg-gray-100 rounded-full">
+                  <MoreHorizontal size={20} className="text-gray-900" />
+                </button>
+                <button className="p-2 hover:bg-gray-100 rounded-full">
+                  <Disc size={20} className="text-gray-900" />
+                </button>
+              </div>
+            </header>
+          ) : (
+            /* Manage Mode Header */
+            <header className="px-4 py-3 bg-white sticky top-0 z-10 flex items-center justify-between border-b border-gray-100">
+               <button 
+                 onClick={() => { setIsManageMode(false); setIsGenManageMode(false); }}
+                 className="p-1 hover:bg-gray-100 rounded-full"
+               >
+                 <X size={24} className="text-gray-900" />
+               </button>
+               <h1 className="text-base font-medium text-gray-900">已选{activeSelectedCount}个</h1>
+               <button 
+                 onClick={isManageMode ? handleSelectAllTemplates : handleSelectAllGens}
+                 className="text-sm font-medium text-blue-600 hover:text-blue-700"
+               >
+                 {activeSelectedCount > 0 ? '取消全选' : '全选'}
+               </button>
+            </header>
+          )}
+
+          {/* Tab Navigation (Underline Style) - Hide in Manage Mode for cleaner look, or keep? 
+              Design usually hides tabs in selection mode. Let's hide if manage mode is active.
+          */}
+          {!isAnyManageMode && (
+            <div className="bg-white px-4 border-b border-gray-100 flex gap-6 pt-2">
+              <button 
+                onClick={() => {
+                  setActiveAdminTab('templates');
+                  setIsManageMode(false);
+                  setIsGenManageMode(false);
+                }}
+                className={`pb-3 text-sm font-medium transition-all relative ${
+                  activeAdminTab === 'templates' 
+                    ? 'text-blue-600 after:absolute after:bottom-0 after:left-1/2 after:-translate-x-1/2 after:w-4 after:h-0.5 after:bg-blue-600 after:rounded-full' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                视频模板管理
               </button>
-              <h1 className="text-lg font-bold text-gray-900">智能体设置</h1>
+              <button 
+                onClick={() => {
+                  setActiveAdminTab('generations');
+                  setIsManageMode(false);
+                  setIsGenManageMode(false);
+                }}
+                className={`pb-3 text-sm font-medium transition-all relative ${
+                  activeAdminTab === 'generations' 
+                    ? 'text-blue-600 after:absolute after:bottom-0 after:left-1/2 after:-translate-x-1/2 after:w-4 after:h-0.5 after:bg-blue-600 after:rounded-full' 
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                生成视频管理
+              </button>
             </div>
-            <button className="p-2 hover:bg-gray-100 rounded-full">
-              <Settings size={20} className="text-gray-600" />
-            </button>
-          </header>
+          )}
 
-          <div className="p-2 bg-gray-50 flex gap-1 border-b">
-            <button 
-              onClick={() => {
-                setActiveAdminTab('templates');
-                setIsManageMode(false);
-                setIsGenManageMode(false);
-              }}
-              className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${activeAdminTab === 'templates' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              视频模板管理
-            </button>
-            <button 
-              onClick={() => {
-                setActiveAdminTab('generations');
-                setIsManageMode(false);
-                setIsGenManageMode(false);
-              }}
-              className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${activeAdminTab === 'generations' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              生成视频管理
-            </button>
-          </div>
-
-          <main className="flex-1 overflow-y-auto bg-gray-50 p-4 scroll-smooth">
+          <main className="flex-1 overflow-y-auto p-4 scroll-smooth">
             {activeAdminTab === 'templates' && (
-              <div className="space-y-4 pb-24">
-                <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h3 className="text-sm font-medium text-gray-700">资源配额</h3>
-                    <div className="flex items-center gap-2">
-                       <span className={`text-xs px-2 py-0.5 rounded-full ${storageStats.isStorageFull ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'}`}>
-                         {storageStats.isStorageFull ? '空间不足' : '状态正常'}
-                       </span>
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>存储容量</span>
-                      <span>{formatBytes(storageStats.usedBytes)} / {formatBytes(MAX_STORAGE_CAPACITY)}</span>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-500 ${storageStats.isStorageFull ? 'bg-red-500' : 'bg-blue-500'}`}
-                        style={{ width: `${Math.min((storageStats.usedBytes / MAX_STORAGE_CAPACITY) * 100, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                     <div className="flex justify-between text-xs text-gray-500">
-                      <span>模板数量</span>
-                      <span className={`${storageStats.isCountFull ? 'text-red-500' : ''}`}>{storageStats.count} / {MAX_TEMPLATE_COUNT} 个</span>
-                    </div>
-                    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-500 ${storageStats.isCountFull ? 'bg-red-500' : 'bg-purple-500'}`}
-                        style={{ width: `${Math.min((storageStats.count / MAX_TEMPLATE_COUNT) * 100, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-white p-4 rounded-xl border border-blue-100 shadow-sm">
+              <div className="space-y-6 pb-24">
+                
+                {/* 1. Upload Area (Only show in Normal Mode) */}
+                {!isManageMode && (
                   <div 
                     onClick={handleClickUpload}
-                    className={`w-full py-3 bg-blue-50 border border-blue-200 border-dashed rounded-lg flex items-center justify-center gap-2 text-blue-600 transition-colors ${
-                      storageStats.isCountFull || storageStats.isStorageFull 
-                        ? 'opacity-50 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200' 
-                        : 'cursor-pointer hover:bg-blue-100'
-                    }`}
+                    className="bg-blue-50/50 border border-blue-200 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-blue-50 transition-colors"
                   >
-                    <Upload size={18} />
-                    <span className="text-sm font-medium">
-                       {storageStats.isCountFull ? '数量已满' : storageStats.isStorageFull ? '容量已满' : '上传视频'}
-                    </span>
+                    <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 mb-1">
+                        <Play size={20} fill="currentColor" />
+                    </div>
+                    <h3 className="text-sm font-medium text-gray-900">上传视频</h3>
+                    <p className="text-[10px] text-gray-400">单次上传1个30s以内视频，不超过50MB</p>
                   </div>
-                  <p className="text-[10px] text-gray-400 mt-2 text-center">
-                    单次上传1个30s以内视频，不超过50MB
-                  </p>
-                </div>
+                )}
 
-                <div className="flex justify-between items-center px-1">
-                  <span className="text-xs text-gray-500">共{templates.length}个模板 · 已推荐3个</span>
-                  <button 
-                    onClick={toggleManageMode}
-                    className={`text-xs font-medium px-3 py-1 rounded-full transition-colors ${isManageMode ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}
-                  >
-                    {isManageMode ? '完成' : '管理'}
-                  </button>
-                </div>
+                {/* 2. Limit Settings Row (Only show in Normal Mode) */}
+                {!isManageMode && (
+                  <div className="bg-white p-4 rounded-xl flex items-center justify-between shadow-sm border border-gray-100">
+                    <div className="flex items-center gap-1.5 text-sm text-gray-700 font-medium">
+                      限制次数
+                      <Info size={14} className="text-gray-400" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => setDailyLimit(Math.max(1, dailyLimit - 1))}
+                          className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100"
+                        >
+                          <Minus size={16} />
+                        </button>
+                        <span className="text-sm font-medium w-4 text-center">{dailyLimit}</span>
+                        <button 
+                          onClick={() => setDailyLimit(dailyLimit + 1)}
+                          className="w-8 h-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-100"
+                        >
+                          <Plus size={16} />
+                        </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. List Header */}
+                {!isManageMode && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">共{templates.length}个模板 · 已推荐3个</span>
+                  </div>
+                )}
+
+                {/* 4. Template Grid (2 Columns) */}
                 <div className="grid grid-cols-2 gap-3">
                   {templates.map(tpl => (
                     <TemplateCard 
@@ -571,7 +681,7 @@ const App: React.FC = () => {
                       isSelectionMode={isManageMode}
                       isSelected={selectedTemplateIds.has(tpl.id)}
                       onSelect={handleSelectTemplate}
-                      onClick={() => console.log('Preview', tpl.name)}
+                      onClick={(template) => setPreviewTemplate(template)}
                     />
                   ))}
                 </div>
@@ -580,24 +690,35 @@ const App: React.FC = () => {
 
             {activeAdminTab === 'generations' && (
               <div className="space-y-4 pb-24">
-                <DashboardHeader 
-                  stats={dashboardStats} 
-                  currentFilter={genFilter}
-                  onFilterChange={setGenFilter}
-                />
-                
-                <div className="flex justify-between items-center px-1">
-                   <span className="text-xs text-gray-500">
-                     {genFilter === '全部' ? `共 ${generations.length} 条记录` : `筛选: ${genFilter}`}
-                   </span>
-                   <button 
-                    onClick={toggleGenManageMode}
-                    className={`text-xs font-medium px-3 py-1 rounded-full transition-colors ${isGenManageMode ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}
-                  >
-                    {isGenManageMode ? '完成' : '管理'}
-                  </button>
-                </div>
+                {/* 1. Filter Tabs (Pill) - Only show in Normal Mode */}
+                {!isGenManageMode && (
+                  <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                    {['全部', '已完成', '生成中', '失败'].map((filter, idx) => {
+                      const count = idx === 0 ? generations.length : generations.filter(g => {
+                        if(filter === '已完成') return g.status === GenerationStatus.COMPLETED;
+                        if(filter === '生成中') return g.status === GenerationStatus.PROCESSING;
+                        if(filter === '失败') return g.status === GenerationStatus.FAILED;
+                        return true;
+                      }).length;
+                      
+                      return (
+                        <button
+                          key={filter}
+                          onClick={() => setGenFilter(filter)}
+                          className={`px-4 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                            genFilter === filter 
+                              ? 'bg-blue-600 text-white shadow-sm' 
+                              : 'bg-white text-gray-600 border border-gray-200'
+                          }`}
+                        >
+                          {filter} {count}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
 
+                {/* 2. Generation Grid */}
                 <GenerationList 
                   items={filteredGenerations} 
                   isSelectionMode={isGenManageMode}
@@ -609,97 +730,102 @@ const App: React.FC = () => {
             )}
           </main>
 
-          {/* TEMPLATE BULK MANAGEMENT BAR */}
-          {activeAdminTab === 'templates' && isManageMode && (
-            <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-3 shadow-2xl flex items-center justify-between z-20 animate-in slide-in-from-bottom-5 safe-area-bottom">
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={handleSelectAllTemplates} 
-                  className="text-xs font-medium text-gray-600 px-3 py-2 hover:bg-gray-100 rounded transition-colors"
-                >
-                  {selectionState.count === templates.length && templates.length > 0 ? '取消全选' : '全选'}
-                </button>
-                <span className="text-xs text-blue-600 font-bold">
-                  已选 {selectionState.count}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  disabled={selectionState.count === 0 || !selectionState.hasOffline} 
-                  onClick={() => handleBulkStatus(TemplateStatus.ONLINE)}
-                  className="flex flex-col items-center justify-center p-2 px-3 min-w-[3rem] text-gray-500 hover:text-green-600 disabled:opacity-30 disabled:hover:text-gray-500 rounded-lg hover:bg-green-50 transition-colors"
-                >
-                   <ArrowUp size={20} className="mb-0.5" /> 
-                   <span className="text-[10px]">上架</span>
-                </button>
-                 <button 
-                   disabled={selectionState.count === 0 || !selectionState.hasOnline} 
-                   onClick={() => handleBulkStatus(TemplateStatus.OFFLINE)}
-                   className="flex flex-col items-center justify-center p-2 px-3 min-w-[3rem] text-gray-500 hover:text-orange-600 disabled:opacity-30 disabled:hover:text-gray-500 rounded-lg hover:bg-orange-50 transition-colors"
-                 >
-                   <ArrowDown size={20} className="mb-0.5" /> 
-                   <span className="text-[10px]">下架</span>
-                </button>
-                <div className="w-px bg-gray-200 mx-1 h-8 self-center" />
-                <button 
-                  disabled={selectionState.count === 0 || !selectionState.canDelete} 
-                  onClick={handleBulkDelete}
-                  className={`flex flex-col items-center justify-center p-2 px-3 min-w-[3rem] rounded-lg transition-colors ${
-                    !selectionState.canDelete 
-                      ? 'text-gray-300 cursor-not-allowed' 
-                      : 'text-red-500 hover:bg-red-50 hover:text-red-600'
-                  }`}
-                >
-                   <Trash2 size={20} className="mb-0.5" />
-                   <span className="text-[10px]">删除</span>
-                </button>
-              </div>
+          {/* BOTTOM FIXED ACTION BAR */}
+          
+          {/* Template Manage Bar */}
+          {activeAdminTab === 'templates' && (
+            <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-2 shadow-xl z-20 safe-area-bottom">
+              {!isManageMode ? (
+                 <div className="p-2">
+                    <Button fullWidth onClick={toggleManageMode} className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg h-11 text-sm font-medium">
+                        管理
+                    </Button>
+                 </div>
+              ) : (
+                /* Manage Action Toolbar (Icons + Text) */
+                <div className="grid grid-cols-3 gap-1 p-1">
+                   {/* Online Action */}
+                   <button 
+                      onClick={() => handleBulkStatus(TemplateStatus.ONLINE)}
+                      disabled={selectionState.count === 0 || !selectionState.hasOffline}
+                      className="flex flex-col items-center justify-center gap-1 py-2 text-gray-600 active:bg-gray-50 rounded-lg disabled:opacity-40 disabled:active:bg-transparent"
+                   >
+                      <ArrowUp size={20} className="text-gray-800" />
+                      <span className="text-[10px] font-medium">上架</span>
+                   </button>
+                   
+                   {/* Offline Action */}
+                   <button 
+                      onClick={() => handleBulkStatus(TemplateStatus.OFFLINE)}
+                      disabled={selectionState.count === 0 || !selectionState.hasOnline}
+                      className="flex flex-col items-center justify-center gap-1 py-2 text-gray-600 active:bg-gray-50 rounded-lg disabled:opacity-40 disabled:active:bg-transparent"
+                   >
+                      <ArrowDown size={20} className="text-gray-800" />
+                      <span className="text-[10px] font-medium">下架</span>
+                   </button>
+
+                   {/* Delete Action */}
+                   <button 
+                      onClick={handleBulkDelete}
+                      disabled={selectionState.count === 0}
+                      className="flex flex-col items-center justify-center gap-1 py-2 text-gray-600 active:bg-gray-50 rounded-lg disabled:opacity-40 disabled:active:bg-transparent"
+                   >
+                      <Trash2 size={20} className="text-gray-800" />
+                      <span className="text-[10px] font-medium">删除</span>
+                   </button>
+                </div>
+              )}
             </div>
           )}
 
-          {/* GENERATION BULK MANAGEMENT BAR */}
-          {activeAdminTab === 'generations' && isGenManageMode && (
-            <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-3 shadow-2xl flex items-center justify-between z-20 animate-in slide-in-from-bottom-5 safe-area-bottom">
-              <div className="flex items-center gap-2">
-                <button 
-                  onClick={handleSelectAllGens} 
-                  className="text-xs font-medium text-gray-600 px-3 py-2 hover:bg-gray-100 rounded transition-colors"
-                >
-                  {genSelectionState.count === filteredGenerations.length && filteredGenerations.length > 0 ? '取消全选' : '全选'}
-                </button>
-                <span className="text-xs text-blue-600 font-bold">
-                  已选 {genSelectionState.count}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                 <button 
-                   disabled={genSelectionState.count === 0 || !genSelectionState.hasOffline} 
-                   onClick={() => handleBulkGenStatus(PublishStatus.ONLINE)}
-                   className="flex flex-col items-center justify-center p-2 px-3 min-w-[3rem] text-gray-500 hover:text-green-600 disabled:opacity-30 disabled:hover:text-gray-500 rounded-lg hover:bg-green-50 transition-colors"
-                   title="上架(公开)"
-                 >
-                   <ArrowUp size={20} className="mb-0.5" /> 
-                   <span className="text-[10px]">上架</span>
-                </button>
-                 <button 
-                   disabled={genSelectionState.count === 0 || !genSelectionState.hasOnline} 
-                   onClick={() => handleBulkGenStatus(PublishStatus.OFFLINE)}
-                   className="flex flex-col items-center justify-center p-2 px-3 min-w-[3rem] text-gray-500 hover:text-orange-600 disabled:opacity-30 disabled:hover:text-gray-500 rounded-lg hover:bg-orange-50 transition-colors"
-                   title="下架(隐藏)"
-                 >
-                   <ArrowDown size={20} className="mb-0.5" /> 
-                   <span className="text-[10px]">下架</span>
-                </button>
-                <div className="w-px bg-gray-200 mx-1 h-8 self-center" />
-                <button 
-                  disabled={genSelectionState.count === 0} 
-                  onClick={handleBulkGenDelete}
-                  className="flex flex-col items-center justify-center p-2 px-3 min-w-[3rem] text-red-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:text-red-500 rounded-lg transition-colors"
-                >
-                   <Trash2 size={20} className="mb-0.5" />
-                   <span className="text-[10px]">删除</span>
-                </button>
-              </div>
+           {/* Generation Manage Bar */}
+           {activeAdminTab === 'generations' && (
+            <div className="absolute bottom-0 left-0 right-0 bg-white border-t p-2 shadow-xl z-20 safe-area-bottom">
+              {!isGenManageMode ? (
+                 <div className="p-2">
+                    <Button fullWidth onClick={toggleGenManageMode} className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg h-11 text-sm font-medium">
+                        管理
+                    </Button>
+                 </div>
+              ) : (
+                <div className="grid grid-cols-4 gap-1 p-1">
+                   <button 
+                      onClick={handleBulkGenDownload}
+                      disabled={genSelectionState.count === 0}
+                      className="flex flex-col items-center justify-center gap-1 py-2 text-gray-600 active:bg-gray-50 rounded-lg disabled:opacity-40"
+                   >
+                      <Download size={20} className="text-gray-800" />
+                      <span className="text-[10px] font-medium">下载</span>
+                   </button>
+
+                   <button 
+                      onClick={() => handleBulkGenStatus(PublishStatus.ONLINE)}
+                      disabled={genSelectionState.count === 0}
+                      className="flex flex-col items-center justify-center gap-1 py-2 text-gray-600 active:bg-gray-50 rounded-lg disabled:opacity-40"
+                   >
+                      <ArrowUp size={20} className="text-gray-800" />
+                      <span className="text-[10px] font-medium">上架</span>
+                   </button>
+                   
+                   <button 
+                      onClick={() => handleBulkGenStatus(PublishStatus.OFFLINE)}
+                      disabled={genSelectionState.count === 0}
+                      className="flex flex-col items-center justify-center gap-1 py-2 text-gray-600 active:bg-gray-50 rounded-lg disabled:opacity-40"
+                   >
+                      <ArrowDown size={20} className="text-gray-800" />
+                      <span className="text-[10px] font-medium">下架</span>
+                   </button>
+
+                   <button 
+                      onClick={handleBulkGenDelete}
+                      disabled={genSelectionState.count === 0}
+                      className="flex flex-col items-center justify-center gap-1 py-2 text-gray-600 active:bg-gray-50 rounded-lg disabled:opacity-40"
+                   >
+                      <Trash2 size={20} className="text-gray-800" />
+                      <span className="text-[10px] font-medium">删除</span>
+                   </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -719,15 +845,16 @@ const App: React.FC = () => {
             onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
           />
 
+          {/* GENERATION Preview Modal */}
           {previewGenRecord && (
             <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setPreviewGenRecord(null)}>
                 <div className="w-full max-w-sm bg-black rounded-2xl overflow-hidden relative shadow-2xl" onClick={e => e.stopPropagation()}>
-                    <div className="aspect-[9/16] bg-gray-900 relative">
+                    <div className="aspect-video bg-gray-900 relative">
                         <img src={previewGenRecord.thumbnailUrl} className="w-full h-full object-contain" alt="Video Preview" />
                         <div className="absolute inset-0 flex items-center justify-center">
-                            <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center">
-                               <Play size={32} fill="white" className="ml-1 text-white" />
-                            </div>
+                           <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center">
+                              <Play size={32} fill="white" className="ml-1 text-white" />
+                           </div>
                         </div>
                     </div>
                     <button 
@@ -742,19 +869,64 @@ const App: React.FC = () => {
                             <span>用户: {previewGenRecord.userName}</span>
                             <span>{previewGenRecord.timestamp}</span>
                         </div>
-                        <div className="mt-2 flex gap-2">
-                           <span className={`text-[10px] px-2 py-0.5 rounded border ${
-                             previewGenRecord.publishStatus === PublishStatus.ONLINE 
-                               ? 'border-green-800 text-green-500' 
-                               : 'border-gray-700 text-gray-500'
-                           }`}>
-                             {previewGenRecord.publishStatus || '状态未知'}
-                           </span>
+                         {/* Download Button */}
+                        <div className="mt-4">
+                           <Button 
+                              fullWidth 
+                              size="sm"
+                              onClick={() => handleDownload(previewGenRecord.thumbnailUrl, `${previewGenRecord.templateName}_${previewGenRecord.id}.mp4`)}
+                              className="bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                           >
+                              <Download size={16} className="mr-2" />
+                              下载视频
+                           </Button>
                         </div>
                     </div>
                 </div>
             </div>
           )}
+
+          {/* TEMPLATE Preview Modal */}
+          {previewTemplate && (
+            <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in" onClick={() => setPreviewTemplate(null)}>
+                <div className="w-full max-w-sm bg-black rounded-2xl overflow-hidden relative shadow-2xl" onClick={e => e.stopPropagation()}>
+                    <div className="aspect-video bg-gray-900 relative">
+                        <img src={previewTemplate.thumbnailUrl} className="w-full h-full object-contain" alt="Template Preview" />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                           <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center">
+                              <Play size={32} fill="white" className="ml-1 text-white" />
+                           </div>
+                        </div>
+                    </div>
+                    <button 
+                       onClick={() => setPreviewTemplate(null)}
+                       className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 rounded-full text-white backdrop-blur-md"
+                    >
+                       <X size={20} />
+                    </button>
+                    <div className="p-4 bg-gray-900 text-white">
+                        <h3 className="font-bold">{previewTemplate.name}</h3>
+                        <div className="flex justify-between items-center mt-2 text-xs text-gray-400">
+                            <span>{previewTemplate.resolution} · {previewTemplate.duration}</span>
+                            <span>{new Date(previewTemplate.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        {/* Download Button */}
+                        <div className="mt-4">
+                           <Button 
+                              fullWidth 
+                              size="sm"
+                              onClick={() => handleDownload(previewTemplate.thumbnailUrl, `${previewTemplate.name}_original.mp4`)}
+                              className="bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                           >
+                              <Download size={16} className="mr-2" />
+                              下载原视频
+                           </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+          )}
+
         </div>
       </div>
     );
@@ -773,11 +945,13 @@ const App: React.FC = () => {
                setToast(null);
              }}
           >
-            <div className={`p-4 rounded-xl shadow-lg flex items-center gap-3 ${toast.type === 'success' ? 'bg-white text-gray-900' : 'bg-blue-600 text-white'}`}>
-              {toast.type === 'info' && <Loader2 className="animate-spin" size={20} />}
-              {toast.type === 'success' && <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center"><Check size={12} className="text-white"/></div>}
-              <div className="flex-1">
-                <h4 className="font-medium text-sm">{toast.message}</h4>
+            <div className={`p-4 rounded-xl shadow-lg flex items-center justify-between gap-3 ${toast.type === 'success' ? 'bg-white text-gray-900' : 'bg-blue-600 text-white'}`}>
+              <div className="flex items-center gap-3">
+                {toast.type === 'info' && <Loader2 className="animate-spin" size={20} />}
+                {toast.type === 'success' && <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center"><Check size={12} className="text-white"/></div>}
+                <div className="flex-1">
+                  <h4 className="font-medium text-sm">{toast.message}</h4>
+                </div>
               </div>
               {toast.onClick && <ChevronLeft size={16} className="rotate-180 opacity-50" />}
             </div>
@@ -811,9 +985,10 @@ const App: React.FC = () => {
           />
         )}
 
-        {consumerView === 'CROPPER' && (
+        {consumerView === 'CROPPER' && selectedConsumerTemplate && (
           <ConsumerCropper
              imageUrl={selectedConsumerImage}
+             template={selectedConsumerTemplate}
              onBack={() => setConsumerView('PICKER')}
              onStartGeneration={handleStartGeneration}
           />
